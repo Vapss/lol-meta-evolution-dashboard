@@ -1,5 +1,7 @@
 """Este módulo contendrá la lógica y la interfaz de usuario para la vista de partidos."""
 
+from __future__ import annotations
+
 import streamlit as st
 import pandas as pd
 import json
