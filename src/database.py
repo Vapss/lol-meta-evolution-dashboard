@@ -275,8 +275,7 @@ def iter_stored_matches(
 ) -> Iterator[str]:
     """Genera los identificadores de partidas almacenadas para un jugador."""
 
-    for match_id in repo.get_stored_match_ids(puuid, year=year):
-        yield match_id
+    yield from repo.get_stored_match_ids(puuid, year=year)
 
 
 __all__ = [
