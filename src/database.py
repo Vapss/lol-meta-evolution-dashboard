@@ -55,12 +55,13 @@ def _initialize_database(db_path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Conne
         );
 
         CREATE TABLE IF NOT EXISTS matches (
-            match_id TEXT PRIMARY KEY,
+            match_id TEXT NOT NULL,
             puuid TEXT NOT NULL,
             game_year INTEGER NOT NULL,
             raw_json TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (puuid) REFERENCES players(puuid)
+            FOREIGN KEY (puuid) REFERENCES players(puuid),
+            PRIMARY KEY (match_id, puuid)
         );
 
         CREATE INDEX IF NOT EXISTS idx_matches_puuid_year
@@ -88,7 +89,7 @@ def _determine_year_from_match(match: dict) -> Optional[int]:
         return None
 
     # Riot API devuelve timestamps en milisegundos.
-    if timestamp_ms > 10**12:  # heurística simple para distinguir milisegundos de segundos.
+    if timestamp_ms > 1e10:  # heurística robusta para distinguir milisegundos de segundos.
         timestamp_ms /= 1000
 
     return datetime.fromtimestamp(timestamp_ms, tz=timezone.utc).year
@@ -223,8 +224,21 @@ class MatchRepository:
             existing_ids.update(row[0] for row in cursor.fetchall())
 
         inserted: List[str] = []
+
+        # Bulk existence check for match_ids
+        match_ids = [record.match_id for record in records]
+        if match_ids:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT match_id FROM matches WHERE match_id = ANY(%s)",
+                    (match_ids,)
+                )
+                existing_match_ids = set(row[0] for row in cur.fetchall())
+        else:
+            existing_match_ids = set()
+
         for record in records:
-            if record.match_id in existing_ids:
+            if record.match_id in existing_match_ids:
                 continue
 
             conn.execute(
@@ -286,8 +300,7 @@ def iter_stored_matches(
 ) -> Iterator[str]:
     """Genera los identificadores de partidas almacenadas para un jugador."""
 
-    for match_id in repo.get_stored_match_ids(puuid, year=year):
-        yield match_id
+    yield from repo.get_stored_match_ids(puuid, year=year)
 
 
 __all__ = [
