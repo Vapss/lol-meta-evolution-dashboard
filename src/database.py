@@ -231,21 +231,8 @@ class MatchRepository:
 
         inserted: List[str] = []
 
-        # Bulk existence check for match_ids
-        match_ids = [record.match_id for record in records]
-        if match_ids:
-            # Safe: placeholders is generated from len(batch), not user input
-            placeholders = ",".join("?" * len(match_ids))
-            cursor = conn.execute(
-                f"SELECT match_id FROM matches WHERE match_id IN ({placeholders});",
-                match_ids,
-            )
-            existing_match_ids = set(row[0] for row in cursor.fetchall())
-        else:
-            existing_match_ids = set()
-
         for record in records:
-            if record.match_id in existing_match_ids:
+            if record.match_id in existing_ids:
                 continue
 
             conn.execute(
