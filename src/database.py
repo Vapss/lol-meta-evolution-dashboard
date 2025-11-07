@@ -206,14 +206,20 @@ class MatchRepository:
         if not records:
             return []
 
-        # Bulk check for existing matches to avoid N+1 queries
+        # Bulk check for existing matches to avoid N+1 queries.
+        # Process in batches to respect SQLite variable limit (999 by default).
         match_ids = [record.match_id for record in records]
-        placeholders = ",".join("?" * len(match_ids))
-        cursor = conn.execute(
-            f"SELECT match_id FROM matches WHERE match_id IN ({placeholders});",
-            match_ids,
-        )
-        existing_ids = {row[0] for row in cursor.fetchall()}
+        existing_ids: set[str] = set()
+        batch_size = 500  # Conservative batch size well under SQLite limit
+
+        for i in range(0, len(match_ids), batch_size):
+            batch = match_ids[i : i + batch_size]
+            placeholders = ",".join("?" * len(batch))
+            cursor = conn.execute(
+                f"SELECT match_id FROM matches WHERE match_id IN ({placeholders});",
+                batch,
+            )
+            existing_ids.update(row[0] for row in cursor.fetchall())
 
         inserted: List[str] = []
         for record in records:
