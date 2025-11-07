@@ -9,6 +9,7 @@ from data_collection import (
     get_match_ids,
     get_match_details
 )
+from src.match_view import show_match_view
 
 
 def analyze_player_matches(puuid: str, champion_names: dict, match_count: int = 10):
@@ -208,7 +209,7 @@ def main():
         st.header(f" {st.session_state.game_name}#{st.session_state.tag_line}")
         
         # Tabs para diferentes análisis
-        tab1, tab2 = st.tabs(["Maestría de Campeones", "Análisis de Partidas"])
+        tab1, tab2, tab3 = st.tabs(["Maestría de Campeones", "Análisis de Partidas", "Historial de Partidas"])
         
         with tab1:
             with st.spinner("Obteniendo maestría de campeones..."):
@@ -317,6 +318,9 @@ def main():
                             st.write("**Campeones:**", ", ".join([f"{k} ({v})" for k, v in sorted(champ_counter.items(), key=lambda x: x[1], reverse=True)]))
                 else:
                     st.warning("No se pudieron obtener datos de partidas")
+
+        with tab3:
+            show_match_view()
 
 
 if __name__ == '__main__':
