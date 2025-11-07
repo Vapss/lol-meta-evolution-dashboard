@@ -72,28 +72,28 @@ def show_match_view():
 
                             with tab1:
                                 teams = {}
-                                for p in match_data['info']['participants']:
-                                    team_id = p['teamId']
+                                for participant in match_data['info']['participants']:
+                                    team_id = participant['teamId']
                                     if team_id not in teams:
                                         teams[team_id] = []
-                                    teams[team_id].append(p)
+                                    teams[team_id].append(participant)
 
                                 for team_id, players in teams.items():
                                     team_result = "Victoria" if players[0]['win'] else "Derrota"
                                     st.subheader(f"Equipo ({team_result})")
 
                                     cols = st.columns(len(players))
-                                    for i, p_data in enumerate(players):
+                                    for i, player_data in enumerate(players):
                                         with cols[i]:
-                                            p_champ_name = champion_names.get(p_data['championId'], f"ID:{p_data['championId']}")
-                                            p_kda = f"{p_data['kills']}/{p_data['deaths']}/{p_data['assists']}"
+                                            player_champion_name = champion_names.get(player_data['championId'], f"ID:{player_data['championId']}")
+                                            player_kda = f"{player_data['kills']}/{player_data['deaths']}/{player_data['assists']}"
 
-                                            st.markdown(f"**{p_data['summonerName']}**")
-                                            st.markdown(f"*{p_champ_name}*")
-                                            st.text(f"KDA: {p_kda}")
-                                            st.text(f"Daño: {p_data['totalDamageDealtToChampions']:,}")
-                                            st.text(f"Oro: {p_data['goldEarned']:,}")
-                                            st.text(f"Visión: {p_data['visionScore']}")
+                                            st.markdown(f"**{player_data['summonerName']}**")
+                                            st.markdown(f"*{player_champion_name}*")
+                                            st.text(f"KDA: {player_kda}")
+                                            st.text(f"Daño: {player_data['totalDamageDealtToChampions']:,}")
+                                            st.text(f"Oro: {player_data['goldEarned']:,}")
+                                            st.text(f"Visión: {player_data['visionScore']}")
 
                             with tab2:
                                 timeline_data = repo.get_match_timeline(match_record.match_id)
@@ -109,18 +109,18 @@ def show_match_view():
                                 if timeline_data:
                                     gold_data = {}
                                     damage_data = {}
-                                    participant_map = {p['participantId']: p['summonerName'] for p in match_data['info']['participants']}
+                                    participant_map = {participant['participantId']: participant['summonerName'] for participant in match_data['info']['participants']}
 
                                     for frame in timeline_data['info']['frames']:
-                                        for p_id, p_frame in frame['participantFrames'].items():
-                                            p_name = participant_map.get(int(p_id))
-                                            if p_name:
-                                                if p_name not in gold_data:
-                                                    gold_data[p_name] = []
-                                                    damage_data[p_name] = []
+                                        for participant_id, participant_frame in frame['participantFrames'].items():
+                                            participant_name = participant_map.get(int(participant_id))
+                                            if participant_name:
+                                                if participant_name not in gold_data:
+                                                    gold_data[participant_name] = []
+                                                    damage_data[participant_name] = []
 
-                                                gold_data[p_name].append(p_frame['totalGold'])
-                                                damage_data[p_name].append(p_frame['damageStats']['totalDamageDoneToChampions'])
+                                                gold_data[participant_name].append(participant_frame['totalGold'])
+                                                damage_data[participant_name].append(participant_frame['damageStats']['totalDamageDoneToChampions'])
 
                                     st.subheader("Oro a lo largo del tiempo")
                                     gold_df = pd.DataFrame(gold_data)
@@ -131,7 +131,7 @@ def show_match_view():
                                     st.line_chart(damage_df)
 
                                     st.subheader("Puntuación de Visión")
-                                    vision_scores = {p['summonerName']: p['visionScore'] for p in match_data['info']['participants']}
+                                    vision_scores = {participant['summonerName']: participant['visionScore'] for participant in match_data['info']['participants']}
                                     vision_df = pd.DataFrame(list(vision_scores.items()), columns=['Jugador', 'Puntuación de Visión']).sort_values('Puntuación de Visión', ascending=False)
                                     st.dataframe(vision_df, use_container_width=True, hide_index=True)
 
