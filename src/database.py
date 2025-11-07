@@ -55,12 +55,13 @@ def _initialize_database(db_path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Conne
         );
 
         CREATE TABLE IF NOT EXISTS matches (
-            match_id TEXT PRIMARY KEY,
+            match_id TEXT NOT NULL,
             puuid TEXT NOT NULL,
             game_year INTEGER NOT NULL,
             raw_json TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (puuid) REFERENCES players(puuid)
+            FOREIGN KEY (puuid) REFERENCES players(puuid),
+            PRIMARY KEY (match_id, puuid)
         );
 
         CREATE INDEX IF NOT EXISTS idx_matches_puuid_year
