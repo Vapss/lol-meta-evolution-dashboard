@@ -1,4 +1,5 @@
 """Este módulo contendrá la lógica y la interfaz de usuario para la vista de partidos."""
+from __future__ import annotations
 
 import streamlit as st
 import pandas as pd
@@ -6,7 +7,7 @@ import json
 from src import data_collection
 from src import database
 
-def show_match_view():
+def show_match_view() -> None:
     """Muestra la vista de historial de partidos, permitiendo la actualización y visualización."""
 
     st.header("Historial de Partidas")
