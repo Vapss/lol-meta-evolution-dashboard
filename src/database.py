@@ -212,8 +212,21 @@ class MatchRepository:
         records = _parse_match_records(matches, default_year, current_year)
 
         inserted: List[str] = []
+
+        # Bulk existence check for match_ids
+        match_ids = [record.match_id for record in records]
+        if match_ids:
+            with conn.cursor() as cur:
+                cur.execute(
+                    "SELECT match_id FROM matches WHERE match_id = ANY(%s)",
+                    (match_ids,)
+                )
+                existing_match_ids = set(row[0] for row in cur.fetchall())
+        else:
+            existing_match_ids = set()
+
         for record in records:
-            if _match_exists(conn, record.match_id):
+            if record.match_id in existing_match_ids:
                 continue
 
             conn.execute(
