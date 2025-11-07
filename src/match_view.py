@@ -6,7 +6,7 @@ import json
 from src import data_collection
 from src import database
 
-def show_match_view():
+def show_match_view() -> None:
     """Muestra la vista de historial de partidos, permitiendo la actualización y visualización."""
 
     st.header("Historial de Partidas")
@@ -83,17 +83,17 @@ def show_match_view():
                                     st.subheader(f"Equipo ({team_result})")
 
                                     cols = st.columns(len(players))
-                                    for i, p_data in enumerate(players):
+                                    for i, player_details in enumerate(players):
                                         with cols[i]:
-                                            p_champ_name = champion_names.get(p_data['championId'], f"ID:{p_data['championId']}")
-                                            p_kda = f"{p_data['kills']}/{p_data['deaths']}/{p_data['assists']}"
+                                            champion_name = champion_names.get(player_details['championId'], f"ID:{player_details['championId']}")
+                                            player_kda = f"{player_details['kills']}/{player_details['deaths']}/{player_details['assists']}"
 
-                                            st.markdown(f"**{p_data['summonerName']}**")
-                                            st.markdown(f"*{p_champ_name}*")
-                                            st.text(f"KDA: {p_kda}")
-                                            st.text(f"Daño: {p_data['totalDamageDealtToChampions']:,}")
-                                            st.text(f"Oro: {p_data['goldEarned']:,}")
-                                            st.text(f"Visión: {p_data['visionScore']}")
+                                            st.markdown(f"**{player_details['summonerName']}**")
+                                            st.markdown(f"*{champion_name}*")
+                                            st.text(f"KDA: {player_kda}")
+                                            st.text(f"Daño: {player_details['totalDamageDealtToChampions']:,}")
+                                            st.text(f"Oro: {player_details['goldEarned']:,}")
+                                            st.text(f"Visión: {player_details['visionScore']}")
 
                             with tab2:
                                 timeline_data = repo.get_match_timeline(match_record.match_id)
@@ -104,7 +104,6 @@ def show_match_view():
                                             repo.store_match_timeline(match_record.match_id, timeline_data)
                                         else:
                                             st.error("No se pudieron obtener los datos de la línea de tiempo.")
-                                            continue
 
                                 if timeline_data:
                                     gold_data = {}
