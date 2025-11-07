@@ -96,7 +96,7 @@ def _determine_year_from_match(match: dict) -> Optional[int]:
         return None
 
     # Riot API devuelve timestamps en milisegundos.
-    if timestamp_ms > 10**12:  # heurística simple para distinguir milisegundos de segundos.
+    if timestamp_ms > 1e10:  # heurística robusta para distinguir milisegundos de segundos.
         timestamp_ms /= 1000
 
     return datetime.fromtimestamp(timestamp_ms, tz=timezone.utc).year
