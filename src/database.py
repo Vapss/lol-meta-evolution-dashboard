@@ -214,6 +214,7 @@ class MatchRepository:
 
         for i in range(0, len(match_ids), batch_size):
             batch = match_ids[i : i + batch_size]
+            # Safe: placeholders is generated from len(batch), not user input
             placeholders = ",".join("?" * len(batch))
             cursor = conn.execute(
                 f"SELECT match_id FROM matches WHERE match_id IN ({placeholders});",
