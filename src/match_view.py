@@ -64,7 +64,7 @@ def show_match_view() -> None:
 
                     if player_data:
                         champion_names = st.session_state.get('champion_names', {})
-                        champion_name = champion_names.get(player_data['championId'], f"ID:{player_data['championId']}")
+                        champion_name = champion_names.get(int(player_data['championId']), f"ID:{player_data['championId']}")
 
                         kda = f"{player_data['kills']}/{player_data['deaths']}/{player_data['assists']}"
                         result = "Victoria" if player_data['win'] else "Derrota"
@@ -87,7 +87,7 @@ def show_match_view() -> None:
                                     cols = st.columns(len(players))
                                     for i, player_details in enumerate(players):
                                         with cols[i]:
-                                            champion_name = champion_names.get(player_details['championId'], f"ID:{player_details['championId']}")
+                                            champion_name = champion_names.get(int(player_details['championId']), f"ID:{player_details['championId']}")
                                             player_kda = f"{player_details['kills']}/{player_details['deaths']}/{player_details['assists']}"
 
                                             st.markdown(f"**{player_details['summonerName']}**")
