@@ -71,13 +71,6 @@ def _initialize_database(db_path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Conne
     return conn
 
 
-def _match_exists(conn: sqlite3.Connection, match_id: str) -> bool:
-    """Indica si una partida ya está registrada en la base."""
-
-    cursor = conn.execute("SELECT 1 FROM matches WHERE match_id = ? LIMIT 1;", (match_id,))
-    return cursor.fetchone() is not None
-
-
 def _determine_year_from_match(match: dict) -> Optional[int]:
     """Extrae el año de la partida a partir de la estructura devuelta por Riot API."""
 
@@ -210,6 +203,25 @@ class MatchRepository:
         conn = self._get_connection()
         current_year = datetime.now(timezone.utc).year
         records = _parse_match_records(matches, default_year, current_year)
+
+        if not records:
+            return []
+
+        # Bulk check for existing matches to avoid N+1 queries.
+        # Process in batches to respect SQLite variable limit (999 by default).
+        match_ids = [record.match_id for record in records]
+        existing_ids: set[str] = set()
+        batch_size = 500  # Conservative batch size well under SQLite limit
+
+        for i in range(0, len(match_ids), batch_size):
+            batch = match_ids[i : i + batch_size]
+            # Safe: placeholders is generated from len(batch), not user input
+            placeholders = ",".join("?" * len(batch))
+            cursor = conn.execute(
+                f"SELECT match_id FROM matches WHERE match_id IN ({placeholders});",
+                batch,
+            )
+            existing_ids.update(row[0] for row in cursor.fetchall())
 
         inserted: List[str] = []
 
