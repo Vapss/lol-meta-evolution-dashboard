@@ -28,11 +28,13 @@ class MatchRecord:
     Attributes:
         match_id: Identificador único de la partida.
         game_year: Año en que se jugó la partida.
+        game_timestamp: Timestamp Unix (segundos) del inicio del juego.
         raw_json: Representación cruda opcional de la partida.
     """
 
     match_id: str
     game_year: int
+    game_timestamp: Optional[int] = None
     raw_json: Optional[str] = None
 
 
@@ -58,6 +60,7 @@ def _initialize_database(db_path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Conne
             match_id TEXT PRIMARY KEY,
             puuid TEXT NOT NULL,
             game_year INTEGER NOT NULL,
+            game_timestamp INTEGER,
             raw_json TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             FOREIGN KEY (puuid) REFERENCES players(puuid)
@@ -65,6 +68,9 @@ def _initialize_database(db_path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Conne
 
         CREATE INDEX IF NOT EXISTS idx_matches_puuid_year
             ON matches (puuid, game_year);
+        
+        CREATE INDEX IF NOT EXISTS idx_matches_puuid_timestamp
+            ON matches (puuid, game_timestamp DESC);
 
         CREATE TABLE IF NOT EXISTS match_timelines (
             match_id TEXT PRIMARY KEY,
@@ -76,9 +82,9 @@ def _initialize_database(db_path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Conne
     return conn
 
 
-def _determine_year_from_match(match: dict) -> Optional[int]:
-    """Extrae el año de la partida a partir de la estructura devuelta por Riot API."""
-
+def _extract_timestamp_from_match(match: dict) -> Optional[int]:
+    """Extrae el timestamp (en segundos) de una partida desde Riot API."""
+    
     if not isinstance(match, dict):
         return None
 
@@ -95,9 +101,21 @@ def _determine_year_from_match(match: dict) -> Optional[int]:
 
     # Riot API devuelve timestamps en milisegundos.
     if timestamp_ms > 1e10:  # heurística robusta para distinguir milisegundos de segundos.
-        timestamp_ms /= 1000
+        timestamp_ms = int(timestamp_ms / 1000)
+    else:
+        timestamp_ms = int(timestamp_ms)
+    
+    return timestamp_ms
 
-    return datetime.fromtimestamp(timestamp_ms, tz=timezone.utc).year
+
+def _determine_year_from_match(match: dict) -> Optional[int]:
+    """Extrae el año de la partida a partir de la estructura devuelta por Riot API."""
+    
+    timestamp = _extract_timestamp_from_match(match)
+    if timestamp is None:
+        return None
+    
+    return datetime.fromtimestamp(timestamp, tz=timezone.utc).year
 
 
 def _parse_match_records(
@@ -112,6 +130,7 @@ def _parse_match_records(
         match_id: Optional[str] = None
         raw_json: Optional[str] = None
         match_year: Optional[int] = None
+        game_timestamp: Optional[int] = None
 
         if isinstance(match, dict):
             metadata = match.get("metadata")
@@ -121,6 +140,7 @@ def _parse_match_records(
                 match_id = match.get("matchId") or match.get("id")
             raw_json = json.dumps(match, ensure_ascii=False)
             match_year = _determine_year_from_match(match)
+            game_timestamp = _extract_timestamp_from_match(match)
         elif isinstance(match, str):
             match_id = match
 
@@ -133,7 +153,12 @@ def _parse_match_records(
         if match_year != current_year:
             continue
 
-        records.append(MatchRecord(match_id=match_id, game_year=match_year, raw_json=raw_json))
+        records.append(MatchRecord(
+            match_id=match_id, 
+            game_year=match_year, 
+            game_timestamp=game_timestamp,
+            raw_json=raw_json
+        ))
 
     return records
 
@@ -236,10 +261,10 @@ class MatchRepository:
 
             conn.execute(
                 """
-                INSERT OR IGNORE INTO matches (match_id, puuid, game_year, raw_json)
-                VALUES (?, ?, ?, ?);
+                INSERT OR IGNORE INTO matches (match_id, puuid, game_year, game_timestamp, raw_json)
+                VALUES (?, ?, ?, ?, ?);
                 """,
-                (record.match_id, puuid, record.game_year, record.raw_json),
+                (record.match_id, puuid, record.game_year, record.game_timestamp, record.raw_json),
             )
             inserted.append(record.match_id)
 
@@ -289,17 +314,17 @@ class MatchRepository:
 
         conn = self._get_connection()
         if year is None:
-            query = "SELECT match_id, game_year, raw_json FROM matches WHERE puuid = ? ORDER BY match_id DESC"
+            query = "SELECT match_id, game_year, game_timestamp, raw_json FROM matches WHERE puuid = ? ORDER BY game_timestamp DESC NULLS LAST, match_id DESC"
             params: tuple = (puuid,)
         else:
-            query = "SELECT match_id, game_year, raw_json FROM matches WHERE puuid = ? AND game_year = ? ORDER BY match_id DESC"
+            query = "SELECT match_id, game_year, game_timestamp, raw_json FROM matches WHERE puuid = ? AND game_year = ? ORDER BY game_timestamp DESC NULLS LAST, match_id DESC"
             params = (puuid, year)
         
         if limit is not None:
             query += f" LIMIT {limit} OFFSET {offset}"
         
         cursor = conn.execute(query, params)
-        return [MatchRecord(match_id, game_year, raw_json) for match_id, game_year, raw_json in cursor.fetchall()]
+        return [MatchRecord(match_id, game_year, game_timestamp, raw_json) for match_id, game_year, game_timestamp, raw_json in cursor.fetchall()]
     
     def get_match_count(self, puuid: str, *, year: Optional[int] = None) -> int:
         """Obtiene el número total de partidas almacenadas para un jugador.
