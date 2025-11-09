@@ -2,11 +2,13 @@
 
 from __future__ import annotations
 
-import streamlit as st
-import pandas as pd
 import json
-from src import data_collection
-from src import database
+
+import pandas as pd
+import streamlit as st
+
+import data_collection
+import database
 
 def show_match_view() -> None:
     """Muestra la vista de historial de partidos, permitiendo la actualización y visualización."""
@@ -19,30 +21,23 @@ def show_match_view() -> None:
 
     puuid = st.session_state.puuid
 
+    game_name = st.session_state.get("game_name")
+    tag_line = st.session_state.get("tag_line")
+
     if st.button("Buscar nuevas partidas", type="primary"):
         with st.spinner("Buscando nuevas partidas..."):
             try:
                 with database.connect_repository() as repo:
+                    # Asegurar que el jugador exista en la tabla `players` antes de insertar partidas.
+                    repo.register_player(puuid, game_name=game_name, tag_line=tag_line)
+
                     stored_match_ids = set(repo.get_stored_match_ids(puuid))
                     recent_match_ids = data_collection.get_match_ids(puuid, count=100)
                     if isinstance(recent_match_ids, list):
                         new_match_ids = [m_id for m_id in recent_match_ids if m_id not in stored_match_ids]
                         new_match_ids.reverse()
                         if new_match_ids:
-                            new_matches_data = []
-                            progress_bar = st.progress(0)
-                            status_text = st.empty()
-                            for i, match_id in enumerate(new_match_ids):
-                                status_text.text(f"Descargando partida {i + 1}/{len(new_match_ids)}...")
-                                details = data_collection.get_match_details(match_id)
-                                if isinstance(details, dict):
-                                    new_matches_data.append(details)
-                                progress_bar.progress((i + 1) / len(new_match_ids))
-                            progress_bar.empty()
-                            status_text.empty()
-                            if new_matches_data:
-                                repo.store_matches(puuid, new_matches_data)
-                                st.success(f"¡Se han añadido {len(new_matches_data)} nuevas partidas al historial!")
+                            _extracted_from_show_match_view_28(new_match_ids, repo, puuid)
                         else:
                             st.success("¡No se encontraron nuevas partidas! El historial está al día.")
             except Exception as e:
@@ -60,9 +55,14 @@ def show_match_view() -> None:
             for match_record in matches:
                 if match_record.raw_json:
                     match_data = json.loads(match_record.raw_json)
-                    player_data = next((p for p in match_data['info']['participants'] if p['puuid'] == puuid), None)
-
-                    if player_data:
+                    if player_data := next(
+                        (
+                            p
+                            for p in match_data['info']['participants']
+                            if p['puuid'] == puuid
+                        ),
+                        None,
+                    ):
                         champion_names = st.session_state.get('champion_names', {})
                         champion_name = champion_names.get(int(player_data['championId']), f"ID:{player_data['championId']}")
 
@@ -80,7 +80,7 @@ def show_match_view() -> None:
                                         teams[team_id] = []
                                     teams[team_id].append(p)
 
-                                for team_id, players in teams.items():
+                                for players in teams.values():
                                     team_result = "Victoria" if players[0]['win'] else "Derrota"
                                     st.subheader(f"Equipo ({team_result})")
 
@@ -114,8 +114,9 @@ def show_match_view() -> None:
 
                                     for frame in timeline_data['info']['frames']:
                                         for p_id, p_frame in frame['participantFrames'].items():
-                                            p_name = participant_map.get(int(p_id))
-                                            if p_name:
+                                            if p_name := participant_map.get(
+                                                int(p_id)
+                                            ):
                                                 if p_name not in gold_data:
                                                     gold_data[p_name] = []
                                                     damage_data[p_name] = []
@@ -134,7 +135,25 @@ def show_match_view() -> None:
                                     st.subheader("Puntuación de Visión")
                                     vision_scores = {p['summonerName']: p['visionScore'] for p in match_data['info']['participants']}
                                     vision_df = pd.DataFrame(list(vision_scores.items()), columns=['Jugador', 'Puntuación de Visión']).sort_values('Puntuación de Visión', ascending=False)
-                                    st.dataframe(vision_df, use_container_width=True, hide_index=True)
+                                    st.dataframe(vision_df, width='stretch', hide_index=True)
 
     except Exception as e:
         st.error(f"Ocurrió un error al cargar el historial de partidas: {e}")
+
+
+# TODO Rename this here and in `show_match_view`
+def _extracted_from_show_match_view_28(new_match_ids, repo, puuid):
+    new_matches_data = []
+    progress_bar = st.progress(0)
+    status_text = st.empty()
+    for i, match_id in enumerate(new_match_ids):
+        status_text.text(f"Descargando partida {i + 1}/{len(new_match_ids)}...")
+        details = data_collection.get_match_details(match_id)
+        if isinstance(details, dict):
+            new_matches_data.append(details)
+        progress_bar.progress((i + 1) / len(new_match_ids))
+    progress_bar.empty()
+    status_text.empty()
+    if new_matches_data:
+        repo.store_matches(puuid, new_matches_data)
+        st.success(f"¡Se han añadido {len(new_matches_data)} nuevas partidas al historial!")

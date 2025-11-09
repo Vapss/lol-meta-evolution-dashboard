@@ -7,9 +7,9 @@ from data_collection import (
     get_puuid_by_riot_id,
     get_champion_mastery,
     get_match_ids,
-    get_match_details
+    get_match_details,
 )
-from src.match_view import show_match_view
+from match_view import show_match_view
 
 
 def analyze_player_matches(puuid: str, champion_names: dict, match_count: int = 10):
@@ -25,10 +25,10 @@ def analyze_player_matches(puuid: str, champion_names: dict, match_count: int = 
         tuple: (overall_stats, stats_by_role, stats_by_champion)
     """
     match_ids = get_match_ids(puuid, count=match_count)
-    
+
     if not isinstance(match_ids, list) or len(match_ids) == 0:
         return None, None, None
-    
+
     stats_by_role = {}
     stats_by_champion = {}
     overall_stats = {
@@ -42,49 +42,51 @@ def analyze_player_matches(puuid: str, champion_names: dict, match_count: int = 
         'total_gold': 0,
         'total_game_duration': 0
     }
-    
+
     progress_bar = st.progress(0)
     status_text = st.empty()
-    
+
     for idx, match_id in enumerate(match_ids):
         progress_bar.progress((idx + 1) / len(match_ids))
         status_text.text(f"Procesando partida {idx + 1}/{len(match_ids)}")
-        
+
         match_data = get_match_details(match_id)
-        
+
         if not isinstance(match_data, dict) or 'info' not in match_data:
             continue
-        
-        player_data = None
-        for participant in match_data['info']['participants']:
-            if participant['puuid'] == puuid:
-                player_data = participant
-                break
-        
+
+        player_data = next(
+            (
+                participant
+                for participant in match_data['info']['participants']
+                if participant['puuid'] == puuid
+            ),
+            None,
+        )
         if not player_data:
             continue
-        
+
         # Datos básicos
         role = player_data.get('teamPosition', 'UNKNOWN')
         champion_id = player_data['championId']
         champion_name = champion_names.get(champion_id, f"ID:{champion_id}")
         won = player_data['win']
-        
+
         # KDA
         kills = player_data.get('kills', 0)
         deaths = player_data.get('deaths', 0)
         assists = player_data.get('assists', 0)
-        
+
         # Gold
         total_gold = player_data.get('goldEarned', 0)
         game_duration_minutes = match_data['info']['gameDuration'] / 60
         gold_per_min = total_gold / game_duration_minutes if game_duration_minutes > 0 else 0
-        
+
         # Oro a los 15 min
         gold_at_15 = player_data.get('challenges', {}).get('goldPerMinute', 0) * 15
         if gold_at_15 == 0:
             gold_at_15 = gold_per_min * min(15, game_duration_minutes)
-        
+
         # Ban del equipo
         team_id = player_data['teamId']
         player_ban = None
@@ -95,7 +97,7 @@ def analyze_player_matches(puuid: str, champion_names: dict, match_count: int = 
                     if ban_champion_id != -1:
                         player_ban = champion_names.get(ban_champion_id, f"ID:{ban_champion_id}")
                 break
-        
+
         # Estadísticas por rol
         if role not in stats_by_role:
             stats_by_role[role] = {
@@ -109,7 +111,7 @@ def analyze_player_matches(puuid: str, champion_names: dict, match_count: int = 
                 'total_gold': 0,
                 'total_duration': 0
             }
-        
+
         stats_by_role[role]['games'] += 1
         stats_by_role[role]['wins'] += 1 if won else 0
         stats_by_role[role]['total_gold_15min'] += gold_at_15
@@ -119,7 +121,7 @@ def analyze_player_matches(puuid: str, champion_names: dict, match_count: int = 
         stats_by_role[role]['total_assists'] += assists
         stats_by_role[role]['total_gold'] += total_gold
         stats_by_role[role]['total_duration'] += game_duration_minutes
-        
+
         # Estadísticas por campeón
         if champion_name not in stats_by_champion:
             stats_by_champion[champion_name] = {
@@ -132,7 +134,7 @@ def analyze_player_matches(puuid: str, champion_names: dict, match_count: int = 
                 'total_duration': 0,
                 'roles': []
             }
-        
+
         stats_by_champion[champion_name]['picks'] += 1
         stats_by_champion[champion_name]['wins'] += 1 if won else 0
         stats_by_champion[champion_name]['total_kills'] += kills
@@ -141,7 +143,7 @@ def analyze_player_matches(puuid: str, champion_names: dict, match_count: int = 
         stats_by_champion[champion_name]['total_gold'] += total_gold
         stats_by_champion[champion_name]['total_duration'] += game_duration_minutes
         stats_by_champion[champion_name]['roles'].append(role)
-        
+
         # Estadísticas generales
         overall_stats['total_games'] += 1
         overall_stats['wins'] += 1 if won else 0
@@ -153,16 +155,11 @@ def analyze_player_matches(puuid: str, champion_names: dict, match_count: int = 
         overall_stats['total_game_duration'] += game_duration_minutes
         if player_ban:
             overall_stats['bans'].append(player_ban)
-    
+
     progress_bar.empty()
     status_text.empty()
-    
+
     return overall_stats, stats_by_role, stats_by_champion
-    
-    progress_bar.empty()
-    status_text.empty()
-    
-    return overall_stats, stats_by_role
 
 
 def main():
