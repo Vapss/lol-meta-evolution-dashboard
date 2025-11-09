@@ -118,3 +118,22 @@ def get_match_details(match_id: str) -> Dict[str, Any] | str:
     headers = {"X-Riot-Token": API_KEY}
     response = requests.get(url, headers=headers, timeout=10)
     return response.json() if response.status_code == 200 else response.text
+
+
+def get_match_timeline(match_id: str) -> Dict[str, Any] | str:
+    """
+    Obtiene la línea de tiempo de una partida.
+
+    Args:
+        match_id (str): ID de la partida
+
+    Returns:
+        Dict[str, Any]: Datos de la línea de tiempo o string con error
+
+    Notes:
+        Usa Match-V5 API con routing regional (americas/europe/asia).
+    """
+    url = f"https://{REGION}.api.riotgames.com/lol/match/v5/matches/{match_id}/timeline"
+    headers = {"X-Riot-Token": API_KEY}
+    response = requests.get(url, headers=headers, timeout=10)
+    return response.json() if response.status_code == 200 else response.text

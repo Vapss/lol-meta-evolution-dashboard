@@ -66,6 +66,12 @@ def _initialize_database(db_path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Conne
 
         CREATE INDEX IF NOT EXISTS idx_matches_puuid_year
             ON matches (puuid, game_year);
+
+        CREATE TABLE IF NOT EXISTS match_timelines (
+            match_id TEXT PRIMARY KEY,
+            timeline_json TEXT NOT NULL,
+            FOREIGN KEY (match_id) REFERENCES matches(match_id)
+        );
         """
     )
     return conn
@@ -225,20 +231,8 @@ class MatchRepository:
 
         inserted: List[str] = []
 
-        # Bulk existence check for match_ids
-        match_ids = [record.match_id for record in records]
-        if match_ids:
-            with conn.cursor() as cur:
-                cur.execute(
-                    "SELECT match_id FROM matches WHERE match_id = ANY(%s)",
-                    (match_ids,)
-                )
-                existing_match_ids = set(row[0] for row in cur.fetchall())
-        else:
-            existing_match_ids = set()
-
         for record in records:
-            if record.match_id in existing_match_ids:
+            if record.match_id in existing_ids:
                 continue
 
             conn.execute(
@@ -277,6 +271,28 @@ class MatchRepository:
 
         return [row[0] for row in cursor.fetchall()]
 
+    def get_stored_matches(self, puuid: str, *, year: Optional[int] = None) -> List[MatchRecord]:
+        """Obtiene las partidas almacenadas para un jugador."""
+
+        conn = self._get_connection()
+        if year is None:
+            cursor = conn.execute(
+                "SELECT match_id, game_year, raw_json FROM matches WHERE puuid = ? ORDER BY match_id DESC;",
+                (puuid,),
+            )
+        else:
+            cursor = conn.execute(
+                """
+                SELECT match_id, game_year, raw_json
+                FROM matches
+                WHERE puuid = ? AND game_year = ?
+                ORDER BY match_id DESC;
+                """,
+                (puuid, year),
+            )
+
+        return [MatchRecord(match_id, game_year, raw_json) for match_id, game_year, raw_json in cursor.fetchall()]
+
     def get_player(self, puuid: str) -> Optional[Tuple[str, Optional[str], Optional[str]]]:
         """Recupera la información básica de un jugador almacenado."""
 
@@ -287,6 +303,32 @@ class MatchRepository:
         )
         row = cursor.fetchone()
         return row if row is not None else None
+
+    def store_match_timeline(self, match_id: str, timeline_data: dict) -> None:
+        """Guarda la línea de tiempo de una partida."""
+
+        conn = self._get_connection()
+        timeline_json = json.dumps(timeline_data, ensure_ascii=False)
+        conn.execute(
+            """
+            INSERT INTO match_timelines (match_id, timeline_json)
+            VALUES (?, ?)
+            ON CONFLICT(match_id) DO NOTHING;
+            """,
+            (match_id, timeline_json),
+        )
+        conn.commit()
+
+    def get_match_timeline(self, match_id: str) -> Optional[dict]:
+        """Recupera la línea de tiempo de una partida."""
+
+        conn = self._get_connection()
+        cursor = conn.execute(
+            "SELECT timeline_json FROM match_timelines WHERE match_id = ? LIMIT 1;",
+            (match_id,),
+        )
+        row = cursor.fetchone()
+        return json.loads(row[0]) if row and row[0] else None
 
 
 def connect_repository(db_path: Path | str = DEFAULT_DB_PATH) -> MatchRepository:
