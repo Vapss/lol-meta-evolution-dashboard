@@ -55,13 +55,12 @@ def _initialize_database(db_path: Path | str = DEFAULT_DB_PATH) -> sqlite3.Conne
         );
 
         CREATE TABLE IF NOT EXISTS matches (
-            match_id TEXT NOT NULL,
+            match_id TEXT PRIMARY KEY,
             puuid TEXT NOT NULL,
             game_year INTEGER NOT NULL,
             raw_json TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            FOREIGN KEY (puuid) REFERENCES players(puuid),
-            PRIMARY KEY (match_id, puuid)
+            FOREIGN KEY (puuid) REFERENCES players(puuid)
         );
 
         CREATE INDEX IF NOT EXISTS idx_matches_puuid_year
@@ -237,7 +236,7 @@ class MatchRepository:
 
             conn.execute(
                 """
-                INSERT INTO matches (match_id, puuid, game_year, raw_json)
+                INSERT OR IGNORE INTO matches (match_id, puuid, game_year, raw_json)
                 VALUES (?, ?, ?, ?);
                 """,
                 (record.match_id, puuid, record.game_year, record.raw_json),
@@ -271,27 +270,56 @@ class MatchRepository:
 
         return [row[0] for row in cursor.fetchall()]
 
-    def get_stored_matches(self, puuid: str, *, year: Optional[int] = None) -> List[MatchRecord]:
-        """Obtiene las partidas almacenadas para un jugador."""
+    def get_stored_matches(
+        self, 
+        puuid: str, 
+        *, 
+        year: Optional[int] = None,
+        limit: Optional[int] = None,
+        offset: int = 0
+    ) -> List[MatchRecord]:
+        """Obtiene las partidas almacenadas para un jugador.
+        
+        Args:
+            puuid: PUUID del jugador
+            year: Filtrar por año específico
+            limit: Número máximo de partidas a devolver
+            offset: Número de partidas a saltar (para paginación)
+        """
 
         conn = self._get_connection()
         if year is None:
+            query = "SELECT match_id, game_year, raw_json FROM matches WHERE puuid = ? ORDER BY match_id DESC"
+            params: tuple = (puuid,)
+        else:
+            query = "SELECT match_id, game_year, raw_json FROM matches WHERE puuid = ? AND game_year = ? ORDER BY match_id DESC"
+            params = (puuid, year)
+        
+        if limit is not None:
+            query += f" LIMIT {limit} OFFSET {offset}"
+        
+        cursor = conn.execute(query, params)
+        return [MatchRecord(match_id, game_year, raw_json) for match_id, game_year, raw_json in cursor.fetchall()]
+    
+    def get_match_count(self, puuid: str, *, year: Optional[int] = None) -> int:
+        """Obtiene el número total de partidas almacenadas para un jugador.
+        
+        Args:
+            puuid: PUUID del jugador
+            year: Filtrar por año específico
+        """
+        conn = self._get_connection()
+        if year is None:
             cursor = conn.execute(
-                "SELECT match_id, game_year, raw_json FROM matches WHERE puuid = ? ORDER BY match_id DESC;",
+                "SELECT COUNT(*) FROM matches WHERE puuid = ?;",
                 (puuid,),
             )
         else:
             cursor = conn.execute(
-                """
-                SELECT match_id, game_year, raw_json
-                FROM matches
-                WHERE puuid = ? AND game_year = ?
-                ORDER BY match_id DESC;
-                """,
+                "SELECT COUNT(*) FROM matches WHERE puuid = ? AND game_year = ?;",
                 (puuid, year),
             )
-
-        return [MatchRecord(match_id, game_year, raw_json) for match_id, game_year, raw_json in cursor.fetchall()]
+        return cursor.fetchone()[0]
 
     def get_player(self, puuid: str) -> Optional[Tuple[str, Optional[str], Optional[str]]]:
         """Recupera la información básica de un jugador almacenado."""
@@ -328,7 +356,12 @@ class MatchRepository:
             (match_id,),
         )
         row = cursor.fetchone()
-        return json.loads(row[0]) if row and row[0] else None
+        if row and row[0]:
+            try:
+                return json.loads(row[0])
+            except (json.JSONDecodeError, TypeError):
+                return None
+        return None
 
 
 def connect_repository(db_path: Path | str = DEFAULT_DB_PATH) -> MatchRepository:
