@@ -5,6 +5,7 @@ from __future__ import annotations
 import json
 
 import pandas as pd
+import plotly.graph_objects as go
 import streamlit as st
 
 import data_collection
@@ -97,18 +98,41 @@ def show_match_view() -> None:
                         None,
                     ):
                         champion_names = st.session_state.get('champion_names', {})
-                        champion_name = champion_names.get(int(player_data['championId']), f"ID:{player_data['championId']}")
+                        champion_id = int(player_data['championId'])
+                        champion_name = champion_names.get(champion_id, f"ID:{champion_id}")
+                        
+                        # Obtener URL de la imagen del campeón
+                        champion_id_to_key = st.session_state.get('champion_id_to_key', {})
+                        ddragon_version = st.session_state.get('ddragon_version', '13.24.1')
+                        champion_key = champion_id_to_key.get(champion_id, 'Annie')
+                        champion_icon_url = f"https://ddragon.leagueoflegends.com/cdn/{ddragon_version}/img/champion/{champion_key}.png"
                         
                         # Obtener nombre del jugador (prioridad: riotIdGameName > summonerName > game_name del session_state)
                         player_name = player_data.get('riotIdGameName') or player_data.get('summonerName') or game_name or 'Jugador'
                         kda = f"{player_data['kills']}/{player_data['deaths']}/{player_data['assists']}"
                         result = "Victoria" if player_data['win'] else "Derrota"
+                        result_emoji = "🟢" if player_data['win'] else "🔴"
                         
                         # Calcular KDA ratio
                         deaths = player_data['deaths'] if player_data['deaths'] > 0 else 1
                         kda_ratio = round((player_data['kills'] + player_data['assists']) / deaths, 2)
 
-                        with st.expander(f"**{player_name}** jugó **{champion_name}** - KDA: {kda} ({kda_ratio}:1) - {result}"):
+                        # Título del expander (sin HTML)
+                        expander_title = f"{result_emoji} {player_name} jugó {champion_name} - KDA: {kda} ({kda_ratio}:1) - {result}"
+                        
+                        with st.expander(expander_title, expanded=False):
+                            # Mostrar imagen del campeón al inicio del expander
+                            col_img, col_info = st.columns([1, 5])
+                            with col_img:
+                                st.image(champion_icon_url, width=80)
+                            with col_info:
+                                result_color = "green" if player_data['win'] else "red"
+                                st.markdown(f"### {player_name}")
+                                st.markdown(f"**Campeón:** {champion_name}")
+                                st.markdown(f"**Resultado:** :{result_color}[{result}]")
+                                st.markdown(f"**KDA:** {kda} ({kda_ratio}:1)")
+                            
+                            st.divider()
                             tab1, tab2 = st.tabs(["Desglose por Jugador", "Estadísticas"])
 
                             with tab1:
@@ -126,12 +150,18 @@ def show_match_view() -> None:
                                     cols = st.columns(len(players))
                                     for i, player_details in enumerate(players):
                                         with cols[i]:
-                                            champion_name = champion_names.get(int(player_details['championId']), f"ID:{player_details['championId']}")
+                                            champ_id = int(player_details['championId'])
+                                            champion_name = champion_names.get(champ_id, f"ID:{champ_id}")
                                             player_kda = f"{player_details['kills']}/{player_details['deaths']}/{player_details['assists']}"
                                             
                                             # Obtener nombre del jugador (prioridad: riotIdGameName > summonerName)
                                             display_name = player_details.get('riotIdGameName') or player_details.get('summonerName', 'Jugador')
+                                            
+                                            # Obtener URL de imagen del campeón
+                                            champion_key = champion_id_to_key.get(champ_id, 'Annie')
+                                            champ_icon = f"https://ddragon.leagueoflegends.com/cdn/{ddragon_version}/img/champion/{champion_key}.png"
 
+                                            st.image(champ_icon, width=64)
                                             st.markdown(f"**{display_name}**")
                                             st.markdown(f"*{champion_name}*")
                                             st.text(f"KDA: {player_kda}")
@@ -153,14 +183,22 @@ def show_match_view() -> None:
                                 if timeline_data and isinstance(timeline_data, dict) and 'info' in timeline_data:
                                     gold_data = {}
                                     damage_data = {}
+                                    team_colors = {}  # Mapeo de jugador a color de equipo
                                     
-                                    # Crear mapa de participantId a nombre de jugador (usando riotIdGameName si está disponible)
+                                    # Crear mapa de participantId a nombre de jugador y asignar colores por equipo
                                     participant_map = {}
                                     for p in match_data['info']['participants']:
                                         participant_id = p.get('participantId')
                                         if participant_id:
                                             player_name = p.get('riotIdGameName') or p.get('summonerName', f'Jugador {participant_id}')
                                             participant_map[participant_id] = player_name
+                                            
+                                            # Asignar color según equipo (100 = Azul, 200 = Rojo)
+                                            team_id = p.get('teamId')
+                                            if team_id == 100:
+                                                team_colors[player_name] = 'rgb(30, 144, 255)'  # Azul
+                                            else:
+                                                team_colors[player_name] = 'rgb(220, 20, 60)'  # Rojo
 
                                     frames = timeline_data.get('info', {}).get('frames', [])
                                     
@@ -181,13 +219,45 @@ def show_match_view() -> None:
                                                     damage_data[p_name].append(damage_stats.get('totalDamageDoneToChampions', 0))
 
                                         if gold_data:
+                                            # Gráfico de Oro con colores por equipo
                                             st.subheader("Oro a lo largo del tiempo")
-                                            gold_df = pd.DataFrame(gold_data)
-                                            st.line_chart(gold_df)
+                                            fig_gold = go.Figure()
+                                            for player, gold_series in gold_data.items():
+                                                fig_gold.add_trace(go.Scatter(
+                                                    x=list(range(len(gold_series))),
+                                                    y=gold_series,
+                                                    mode='lines',
+                                                    name=player,
+                                                    line=dict(color=team_colors.get(player, 'gray'), width=2)
+                                                ))
+                                            fig_gold.update_layout(
+                                                template='simple_white',
+                                                xaxis_title="Minutos",
+                                                yaxis_title="Oro Total",
+                                                hovermode='x unified',
+                                                height=400
+                                            )
+                                            st.plotly_chart(fig_gold, use_container_width=True)
 
+                                            # Gráfico de Daño con colores por equipo
                                             st.subheader("Daño a campeones a lo largo del tiempo")
-                                            damage_df = pd.DataFrame(damage_data)
-                                            st.line_chart(damage_df)
+                                            fig_damage = go.Figure()
+                                            for player, damage_series in damage_data.items():
+                                                fig_damage.add_trace(go.Scatter(
+                                                    x=list(range(len(damage_series))),
+                                                    y=damage_series,
+                                                    mode='lines',
+                                                    name=player,
+                                                    line=dict(color=team_colors.get(player, 'gray'), width=2)
+                                                ))
+                                            fig_damage.update_layout(
+                                                template='simple_white',
+                                                xaxis_title="Minutos",
+                                                yaxis_title="Daño Total a Campeones",
+                                                hovermode='x unified',
+                                                height=400
+                                            )
+                                            st.plotly_chart(fig_damage, use_container_width=True)
                                         else:
                                             st.warning("No se pudieron procesar los datos de timeline.")
 

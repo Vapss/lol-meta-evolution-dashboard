@@ -1,5 +1,6 @@
 """App principal en Streamlit para explorar jugadores de League of Legends."""
 from __future__ import annotations
+import requests
 import streamlit as st
 import pandas as pd
 from data_collection import (
@@ -8,6 +9,7 @@ from data_collection import (
     get_champion_mastery,
     get_match_ids,
     get_match_details,
+    get_latest_version,
 )
 from match_view import show_match_view
 
@@ -168,10 +170,24 @@ def main():
     st.title("League of Legends - Análisis de Jugador")
     st.markdown("Analiza estadísticas de cualquier jugador usando su Riot ID")
     
-    # Cargar datos de campeones
+    # Cargar datos de campeones y mapeo para URLs
     if 'champion_names' not in st.session_state:
         with st.spinner("Cargando datos de campeones..."):
             st.session_state.champion_names = get_champion_data()
+            
+            # Cachear también el mapeo de champion_id a nombre interno para URLs
+            latest_version = get_latest_version()
+            champions_url = f"https://ddragon.leagueoflegends.com/cdn/{latest_version}/data/es_MX/champion.json"
+            response = requests.get(champions_url, timeout=10)
+            champions_data = response.json()
+            
+            champion_id_to_key = {}
+            for champ_key, champ_info in champions_data['data'].items():
+                champion_id = int(champ_info['key'])
+                champion_id_to_key[champion_id] = champ_key
+            
+            st.session_state.champion_id_to_key = champion_id_to_key
+            st.session_state.ddragon_version = latest_version
     
     champion_names = st.session_state.champion_names
     

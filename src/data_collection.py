@@ -15,6 +15,18 @@ REGION = os.getenv("RIOT_REGION", "americas")
 PLATFORM = os.getenv("RIOT_PLATFORM", "la1")
 
 
+def get_latest_version() -> str:
+    """
+    Obtiene la versión más reciente de Data Dragon.
+    
+    Returns:
+        str: Versión más reciente (ej: "13.24.1")
+    """
+    versions_url = "https://ddragon.leagueoflegends.com/api/versions.json"
+    versions = requests.get(versions_url, timeout=10).json()
+    return versions[0]
+
+
 def get_champion_data() -> Dict[int, str]:
     """
     Obtiene la información de campeones desde Data Dragon.
@@ -25,9 +37,7 @@ def get_champion_data() -> Dict[int, str]:
     Notes:
         Usa la versión más reciente de Data Dragon y datos en español (es_MX).
     """
-    versions_url = "https://ddragon.leagueoflegends.com/api/versions.json"
-    versions = requests.get(versions_url, timeout=10).json()
-    latest_version = versions[0]
+    latest_version = get_latest_version()
     
     champions_url = f"https://ddragon.leagueoflegends.com/cdn/{latest_version}/data/es_MX/champion.json"
     response = requests.get(champions_url, timeout=10)
@@ -39,6 +49,46 @@ def get_champion_data() -> Dict[int, str]:
         champion_dict[champion_id] = champ_info['name']
     
     return champion_dict
+
+
+def get_champion_icon_url(champion_id: int, champion_name: str | None = None) -> str:
+    """
+    Obtiene la URL del icono de un campeón desde Data Dragon.
+    
+    Args:
+        champion_id (int): ID del campeón
+        champion_name (str | None): Nombre del campeón (para optimización)
+        
+    Returns:
+        str: URL del icono del campeón
+        
+    Notes:
+        Formato: https://ddragon.leagueoflegends.com/cdn/{version}/img/champion/{champion}.png
+        Usa el nombre interno del campeón (ej: "MonkeyKing" para Wukong).
+    """
+    try:
+        latest_version = get_latest_version()
+        
+        # Si no se proporciona el nombre, obtener datos de campeones
+        if not champion_name:
+            champions_url = f"https://ddragon.leagueoflegends.com/cdn/{latest_version}/data/es_MX/champion.json"
+            response = requests.get(champions_url, timeout=10)
+            champions_data = response.json()
+            
+            # Buscar el campeón por ID
+            for champ_key, champ_info in champions_data['data'].items():
+                if int(champ_info['key']) == champion_id:
+                    champion_name = champ_key
+                    break
+        
+        if champion_name:
+            return f"https://ddragon.leagueoflegends.com/cdn/{latest_version}/img/champion/{champion_name}.png"
+        else:
+            # Fallback a un icono genérico
+            return f"https://ddragon.leagueoflegends.com/cdn/{latest_version}/img/profileicon/29.png"
+    except Exception:
+        # En caso de error, devolver icono por defecto
+        return "https://ddragon.leagueoflegends.com/cdn/13.24.1/img/profileicon/29.png"
 
 
 def get_puuid_by_riot_id(game_name: str, tag_line: str) -> Dict[str, Any]:
